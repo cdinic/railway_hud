@@ -2,7 +2,7 @@
 
 A native macOS menu bar app that shows the live deployment status of your [Railway](https://railway.app) project as retro LED indicators.
 
-![menu bar LEDs showing green/red status]
+<img src="railway_hud.png" width="86" alt="Railway HUD menu bar LEDs" />
 
 ## What it does
 
