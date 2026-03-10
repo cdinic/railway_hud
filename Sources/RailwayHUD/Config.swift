@@ -1,31 +1,95 @@
 import Foundation
+import Security
 
 /// Single source of truth for all shared constants and cross-cutting helpers.
 enum Config {
-    static let tokenFile = NSHomeDirectory() + "/.railway-hud"
     static let orderKey  = "com.railway-hud.serviceOrder"
+    static let projectKey = "com.railway-hud.projectID"
 
-    /// Reads a value for the given key from the config file (format: KEY=value).
-    private static func readValue(forKey key: String) -> String? {
-        if key == "RAILWAY_TOKEN",
-           let t = ProcessInfo.processInfo.environment["RAILWAY_TOKEN"], !t.isEmpty { return t }
-        guard let content = try? String(contentsOfFile: tokenFile, encoding: .utf8) else { return nil }
-        for line in content.components(separatedBy: .newlines) {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            guard t.hasPrefix("\(key)=") else { continue }
-            let v = String(t.dropFirst("\(key)=".count))
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t"))
-            if !v.isEmpty { return v }
-        }
-        return nil
+    private static let keychainService = "com.railway-hud"
+
+    // In-memory cache — avoids repeated keychain prompts within a single session.
+    private static var _cachedAccessToken:  String? = nil
+    private static var _cachedRefreshToken: String? = nil
+
+    static func readProjectID() -> String? {
+        UserDefaults.standard.string(forKey: projectKey)
     }
 
-    static func readToken()     -> String? { readValue(forKey: "RAILWAY_TOKEN") }
-    static func readProjectID() -> String? { readValue(forKey: "RAILWAY_PROJECT_ID") }
+    // MARK: - OAuth tokens (Keychain, cached in memory)
 
-    /// Persist both token and project ID to the config file.
-    static func save(token: String, projectID: String) throws {
-        let contents = "RAILWAY_TOKEN=\(token)\nRAILWAY_PROJECT_ID=\(projectID)\n"
-        try contents.write(toFile: tokenFile, atomically: true, encoding: .utf8)
+    static func readOAuthToken() -> String? {
+        if _cachedAccessToken == nil { _cachedAccessToken = keychainRead("oauth_access_token") }
+        return _cachedAccessToken
+    }
+
+    static func readRefreshToken() -> String? {
+        if _cachedRefreshToken == nil { _cachedRefreshToken = keychainRead("oauth_refresh_token") }
+        return _cachedRefreshToken
+    }
+
+    static func saveOAuthTokens(access: String, refresh: String?) {
+        _cachedAccessToken  = access
+        _cachedRefreshToken = refresh
+        keychainWrite("oauth_access_token", value: access)
+        if let r = refresh { keychainWrite("oauth_refresh_token", value: r) }
+    }
+
+    static func clearOAuthTokens() {
+        _cachedAccessToken  = nil
+        _cachedRefreshToken = nil
+        keychainDelete("oauth_access_token")
+        keychainDelete("oauth_refresh_token")
+    }
+
+    // MARK: - Project selection
+
+    static func saveProjectID(_ id: String) {
+        UserDefaults.standard.set(id, forKey: projectKey)
+    }
+
+    static func clearProjectID() {
+        UserDefaults.standard.removeObject(forKey: projectKey)
+    }
+
+    // MARK: - Keychain
+
+    private static func keychainRead(_ key: String) -> String? {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: key,
+            kSecReturnData:  true,
+            kSecMatchLimit:  kSecMatchLimitOne,
+        ]
+        var out: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func keychainWrite(_ key: String, value: String) {
+        let data  = Data(value.utf8)
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: key,
+        ]
+        if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
+            SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        } else {
+            var add = query
+            add[kSecValueData] = data
+            SecItemAdd(add as CFDictionary, nil)
+        }
+    }
+
+    private static func keychainDelete(_ key: String) {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: keychainService,
+            kSecAttrAccount: key,
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }

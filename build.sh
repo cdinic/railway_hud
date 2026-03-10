@@ -39,6 +39,17 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Railway HUD OAuth</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.local.railway-hud</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
 EOF

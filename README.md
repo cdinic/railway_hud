@@ -1,42 +1,39 @@
 # Railway HUD
 
-A native macOS menu bar app that shows the live deployment status of your [Railway](https://railway.app) project as retro LED indicators.
+Native macOS menu bar app for Railway service status.
 
 <img src="railway_hud.png" width="86" alt="Railway HUD menu bar LEDs" />
 
 ## What it does
 
-- Displays a row of colored LEDs in the menu bar — one per service
-- Click the LEDs to open a panel listing all services and their statuses
-- Click any service row to open it in the Railway console
-- Drag to reorder services in the panel
-- Polls for updates every 30 seconds
+- Shows one LED per service in the menu bar
+- Opens a service panel on click
+- Opens the selected service in Railway
+- Lets you reorder services
+- Polls every 30 seconds
 
-**LED colors:**
+## LED colors
+
 | Color | Meaning |
-|-------|---------|
-| Green | Live / success |
+| --- | --- |
+| Green | Success |
 | Blue | Deploying |
 | Yellow | Queued |
-| Red | Failed / down |
-| Gray | No deployments / unknown |
+| Red | Failed / disconnected |
+| Gray | Unknown / empty |
 
 ## Requirements
 
 - macOS 13+
-- A [Railway](https://railway.app) account
+- Railway account
 
-## Setup
+## Install
 
-**Option A: Download pre-built app (no Xcode needed)**
+Download `RailwayHUD.zip` from the [latest release](https://github.com/cdinic/railway_hud/releases/latest), unzip it, then open `RailwayHUD.app`.
 
-Download `RailwayHUD.zip` from the [latest release](https://github.com/cdinic/railway_hud/releases/latest), unzip, and drag `RailwayHUD.app` to your Applications folder.
+Unsigned app on first launch: right-click the app, choose **Open**, then confirm.
 
-> **First launch:** macOS will block the app since it's unsigned. Right-click `RailwayHUD.app` → **Open** → click Open. You only need to do this once.
-
-**Option B: Build from source**
-
-Requires the Xcode Command Line Tools (`xcode-select --install`).
+## Build
 
 ```bash
 git clone https://github.com/cdinic/railway_hud.git
@@ -45,11 +42,15 @@ cd railway_hud
 open RailwayHUD.app
 ```
 
-**2. Configure credentials**
+## Connect
 
-Click the LEDs in the menu bar → click **settings** → enter your API token and Project ID → Save & Connect.
+Open the HUD, choose `settings`, sign in with Railway, then select a project and save it.
 
-- **API token** — railway.app → Account Settings → Tokens → generate a new token
-- **Project ID** — open your project on railway.app; it's the UUID in the URL: `railway.app/project/<project-id>`
+Tokens are stored in the macOS Keychain. The selected project ID is stored in `UserDefaults`.
 
-The app won't connect until both values are saved.
+## OAuth setup for source builds
+
+1. Create a Railway OAuth app.
+2. Set the redirect URI to `com.local.railway-hud://oauth/callback`.
+3. Put your client ID in [Sources/RailwayHUD/OAuthManager.swift](/Users/chrisdinicolas/Documents/Railway%20HUD/Sources/RailwayHUD/OAuthManager.swift).
+4. Rebuild with `./build.sh`.

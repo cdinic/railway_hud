@@ -11,21 +11,26 @@ private let kPadR:   CGFloat = 12   // right padding
 private let kLedSz:  CGFloat = 6    // LED square size
 private let kStatW:  CGFloat = 72   // status label column width
 private let kNameX:  CGFloat = 24   // name column start (after LED)
+private let kEmptyStateH: CGFloat = 126
 
 class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     // MARK: - State (set by StatusBarController; no auto-reload — caller drives reloads)
 
     var services: [ServiceStatus] = []
-    var hasError  = false
     var lastUpdated: Date?
 
     var onReorder:  (([ServiceStatus]) -> Void)?
+    var onConnect:  (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit:     (() -> Void)?
 
     private var panel:        NSPanel?
     private var tableView:    NSTableView?
+    private var emptyStateView: NSView?
+    private var emptyStateTitle: NSTextField?
+    private var emptyStateDetail: NSTextField?
+    private var emptyStateButton: NSButton?
     private var updatedLabel: NSTextField?
     private var eventMonitor: Any?
 
@@ -44,7 +49,6 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         buildIfNeeded()
         reload()
         sizeAndPlace(relativeTo: button)
-        tableView?.reloadData()
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
 
@@ -58,22 +62,40 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         if let m = eventMonitor { NSEvent.removeMonitor(m); eventMonitor = nil }
     }
 
-    /// Refresh label and table data — call this whenever underlying data changes while visible.
-    func reload() {
-        updateLabel()
-        tableView?.reloadData()
-    }
-
     // MARK: - Sizing & placement
 
-    private func tableH() -> CGFloat { max(1, CGFloat(services.count)) * kRowH }
-    private func totalH() -> CGFloat { tableH() + kFooterH }
+    private var hasToken: Bool {
+        Config.readOAuthToken() != nil
+    }
+
+    private var hasProjectSelection: Bool {
+        guard let projectID = Config.readProjectID() else { return false }
+        return !projectID.isEmpty
+    }
+
+    private var showsConnectEmptyState: Bool {
+        !hasToken && services.isEmpty
+    }
+
+    private var showsProjectSelectionEmptyState: Bool {
+        hasToken && !hasProjectSelection && services.isEmpty
+    }
+
+    private func bodyH() -> CGFloat {
+        (showsConnectEmptyState || showsProjectSelectionEmptyState)
+            ? kEmptyStateH
+            : max(1, CGFloat(services.count)) * kRowH
+    }
+
+    private func totalH() -> CGFloat { bodyH() + kFooterH }
 
     private func sizeAndPlace(relativeTo button: NSStatusBarButton) {
         guard let bWin = button.window else { return }
         let total = totalH()
         panel?.setContentSize(NSSize(width: kW, height: total))
-        tableView?.frame = NSRect(x: 0, y: kFooterH, width: kW, height: tableH())
+        let bodyFrame = NSRect(x: 0, y: kFooterH, width: kW, height: bodyH())
+        tableView?.frame = bodyFrame
+        emptyStateView?.frame = bodyFrame
 
         let btn    = bWin.convertToScreen(button.frame)
         let screen = bWin.screen ?? NSScreen.main
@@ -122,6 +144,11 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         cv.addSubview(tv)
         self.tableView = tv
 
+        let empty = buildEmptyStateView(frame: .zero)
+        empty.isHidden = true
+        cv.addSubview(empty)
+        self.emptyStateView = empty
+
         let sep = NSBox()
         sep.boxType     = .separator
         sep.borderColor = NSColor(white: 0.15, alpha: 1)
@@ -147,6 +174,43 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         addLink("quit",    x: half,  y: 10, w: half - kPadR,      in: v, sel: #selector(doQuit))
     }
 
+    private func buildEmptyStateView(frame: NSRect) -> NSView {
+        let view = NSView(frame: frame)
+
+        let title = NSTextField(labelWithString: "")
+        title.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        title.textColor = NSColor(white: 0.82, alpha: 1)
+        title.alignment = .center
+        title.frame = NSRect(x: 18, y: 80, width: kW - 36, height: 16)
+        view.addSubview(title)
+        self.emptyStateTitle = title
+
+        let detail = NSTextField(labelWithString: "")
+        detail.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        detail.textColor = NSColor(white: 0.42, alpha: 1)
+        detail.alignment = .center
+        detail.lineBreakMode = .byWordWrapping
+        detail.maximumNumberOfLines = 2
+        detail.frame = NSRect(x: 24, y: 48, width: kW - 48, height: 28)
+        view.addSubview(detail)
+        self.emptyStateDetail = detail
+
+        let button = NSButton(frame: NSRect(x: 52, y: 14, width: kW - 104, height: 26))
+        button.bezelStyle = .rounded
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor(red: 0.12, green: 0.42, blue: 0.98, alpha: 0.90).cgColor
+        button.layer?.cornerRadius = 5
+        button.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        button.contentTintColor = NSColor(white: 0.96, alpha: 1)
+        button.target = self
+        button.action = #selector(doEmptyStateAction)
+        view.addSubview(button)
+        self.emptyStateButton = button
+
+        return view
+    }
+
     private func addLink(_ title: String, x: CGFloat, y: CGFloat, w: CGFloat, in view: NSView, sel: Selector) {
         let lbl = ClickLabel(labelWithString: title)
         lbl.font      = .monospacedSystemFont(ofSize: 10, weight: .regular)
@@ -158,14 +222,43 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
     }
 
     private func updateLabel() {
+        guard !showsConnectEmptyState else {
+            updatedLabel?.stringValue = "not connected"
+            return
+        }
+        guard !showsProjectSelectionEmptyState else {
+            updatedLabel?.stringValue = "project not selected"
+            return
+        }
         guard let date = lastUpdated else { updatedLabel?.stringValue = ""; return }
         let f = DateFormatter(); f.timeStyle = .medium
         updatedLabel?.stringValue = "updated \(f.string(from: date))"
     }
 
+    private func updateEmptyState() {
+        if showsProjectSelectionEmptyState {
+            emptyStateTitle?.stringValue = "No Railway project selected"
+            emptyStateDetail?.stringValue = "Open settings to choose a project for live service status."
+            emptyStateButton?.title = "Open Settings"
+        } else {
+            emptyStateTitle?.stringValue = "No Railway account connected"
+            emptyStateDetail?.stringValue = "Authenticate to load projects and live service status."
+            emptyStateButton?.title = "Connect Railway Account"
+        }
+    }
+
     // MARK: - Table data source
 
     func numberOfRows(in tableView: NSTableView) -> Int { services.count }
+
+    func reload() {
+        updateLabel()
+        updateEmptyState()
+        let showEmpty = showsConnectEmptyState || showsProjectSelectionEmptyState
+        emptyStateView?.isHidden = !showEmpty
+        tableView?.isHidden = showEmpty
+        tableView?.reloadData()
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let svc   = services[row]
@@ -242,6 +335,15 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         guard let url = URL(string: "https://railway.app/project/\(pid)/service/\(svc.id)") else { return }
         hide()
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func doEmptyStateAction() {
+        hide()
+        if showsConnectEmptyState {
+            onConnect?()
+        } else {
+            onSettings?()
+        }
     }
 
     @objc private func doSettings() { hide(); onSettings?() }
