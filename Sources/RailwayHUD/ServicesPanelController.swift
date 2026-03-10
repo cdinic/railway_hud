@@ -143,7 +143,7 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         self.updatedLabel = lbl
 
         let half = kW / 2
-        addLink("api key", x: kPadL, y: 10, w: half - kPadL - 4, in: v, sel: #selector(doSettings))
+        addLink("settings", x: kPadL, y: 10, w: half - kPadL - 4, in: v, sel: #selector(doSettings))
         addLink("quit",    x: half,  y: 10, w: half - kPadR,      in: v, sel: #selector(doQuit))
     }
 
@@ -238,7 +238,8 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         let row = tv.clickedRow
         guard row >= 0, row < services.count else { return }
         let svc = services[row]
-        guard let url = URL(string: "https://railway.app/project/\(Config.projectID)/service/\(svc.id)") else { return }
+        let pid = Config.readProjectID() ?? ""
+        guard let url = URL(string: "https://railway.app/project/\(pid)/service/\(svc.id)") else { return }
         hide()
         NSWorkspace.shared.open(url)
     }

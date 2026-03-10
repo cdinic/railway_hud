@@ -33,11 +33,7 @@ A native macOS menu bar app that shows the live deployment status of your [Railw
 
 Go to [railway.app](https://railway.app) → Account Settings → Tokens → generate a new token.
 
-**2. Set your project ID**
-
-Open `Sources/RailwayHUD/Config.swift` and replace the `projectID` value with your own Railway project ID (found in your project's URL on railway.app).
-
-**3. Build and run**
+**2. Build and run**
 
 ```bash
 git clone https://github.com/cdinic/railway_hud.git
@@ -46,6 +42,8 @@ cd railway_hud
 open RailwayHUD.app
 ```
 
-**4. Enter your API token**
+**3. Enter your credentials**
 
-Click the LEDs in the menu bar → click **api key** → paste your token → Save & Connect.
+Click the LEDs in the menu bar → click **settings** → enter your API token and Project ID → Save & Connect.
+
+Your Project ID is in the URL when viewing your project on railway.app: `railway.app/project/<project-id>`.

@@ -13,7 +13,7 @@ enum APIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noToken:        return "No token — open API Key in the menu"
+        case .noToken:        return "No token or project ID — open Settings in the menu"
         case .network(let m): return "Network: \(m)"
         case .parse(let m):   return "Parse error: \(m)"
         }
@@ -23,27 +23,29 @@ enum APIError: LocalizedError {
 class RailwayAPI {
     private let apiURL = URL(string: "https://backboard.railway.app/graphql/v2")!
 
-    // Stored once — the query string never changes.
-    private lazy var query: String = """
-    {
-      project(id: "\(Config.projectID)") {
-        services {
-          edges {
-            node {
-              id
-              name
-              deployments(first: 1) {
-                edges { node { status } }
+    private var query: String {
+        let pid = Config.readProjectID() ?? ""
+        return """
+        {
+          project(id: "\(pid)") {
+            services {
+              edges {
+                node {
+                  id
+                  name
+                  deployments(first: 1) {
+                    edges { node { status } }
+                  }
+                }
               }
             }
           }
         }
-      }
+        """
     }
-    """
 
     func fetchStatus(completion: @escaping (Result<[ServiceStatus], Error>) -> Void) {
-        guard let token = Config.readToken() else {
+        guard let token = Config.readToken(), Config.readProjectID() != nil else {
             completion(.failure(APIError.noToken))
             return
         }
