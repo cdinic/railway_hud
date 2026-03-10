@@ -36,7 +36,7 @@ Download `RailwayHUD.zip` from the [latest release](https://github.com/cdinic/ra
 
 **Option B: Build from source**
 
-Requires Xcode with Swift toolchain.
+Requires the Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/cdinic/railway_hud.git
