@@ -24,12 +24,19 @@ A native macOS menu bar app that shows the live deployment status of your [Railw
 ## Requirements
 
 - macOS 13+
-- Xcode with Swift toolchain
 - A [Railway](https://railway.app) account
 
 ## Setup
 
-**1. Build and run**
+**Option A: Download pre-built app (no Xcode needed)**
+
+Download `RailwayHUD.zip` from the [latest release](https://github.com/cdinic/railway_hud/releases/latest), unzip, and drag `RailwayHUD.app` to your Applications folder.
+
+> **First launch:** macOS will block the app since it's unsigned. Right-click `RailwayHUD.app` → **Open** → click Open. You only need to do this once.
+
+**Option B: Build from source**
+
+Requires Xcode with Swift toolchain.
 
 ```bash
 git clone https://github.com/cdinic/railway_hud.git
