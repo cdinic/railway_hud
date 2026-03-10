@@ -21,18 +21,20 @@ class SettingsWindowController {
 
     func show() {
         let alert = NSAlert()
-        alert.messageText     = "Railway Settings"
-        alert.informativeText = "Generate a token at railway.app → Account Settings → Tokens.\nFind your Project ID in the project URL on railway.app."
+        alert.messageText = "Railway Settings"
         alert.addButton(withTitle: "Save & Connect")
         alert.addButton(withTitle: "Cancel")
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 60))
+        // Each row: field (24) + hint (14) + gap (8) = 46; two rows + gap between = 100
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 100))
 
-        let tokenField = makeField(placeholder: "API token", y: 34, in: container)
+        let tokenField = makeField(placeholder: "API token", y: 62, in: container)
         tokenField.stringValue = Config.readToken() ?? ""
+        makeHint("railway.app → Account Settings → Tokens", y: 48, in: container)
 
-        let projectField = makeField(placeholder: "Project ID", y: 4, in: container)
+        let projectField = makeField(placeholder: "Project ID", y: 14, in: container)
         projectField.stringValue = Config.readProjectID() ?? ""
+        makeHint("railway.app/project/<project-id>  (from the URL)", y: 0, in: container)
 
         alert.accessoryView              = container
         alert.window.initialFirstResponder = tokenField
@@ -62,5 +64,13 @@ class SettingsWindowController {
         f.bezelStyle        = .roundedBezel
         view.addSubview(f)
         return f
+    }
+
+    private func makeHint(_ text: String, y: CGFloat, in view: NSView) {
+        let l = NSTextField(labelWithString: text)
+        l.font      = .systemFont(ofSize: 10)
+        l.textColor = .secondaryLabelColor
+        l.frame     = NSRect(x: 2, y: y, width: 320, height: 14)
+        view.addSubview(l)
     }
 }
