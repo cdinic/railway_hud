@@ -26,9 +26,9 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Railway HUD</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleExecutable</key>
     <string>RailwayHUD</string>
     <key>CFBundlePackageType</key>
