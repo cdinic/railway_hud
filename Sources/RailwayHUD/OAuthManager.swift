@@ -115,15 +115,25 @@ final class OAuthManager: NSObject {
 
     func withValidAccessToken(forceRefresh: Bool = false,
                               completion: @escaping (String?) -> Void) {
-        if !forceRefresh,
-           let accessToken = Config.readOAuthToken(),
-           !accessTokenNeedsRefresh() {
-            completion(accessToken)
-            return
+        if !forceRefresh, let accessToken = Config.readOAuthToken() {
+            if !accessTokenNeedsRefresh() || hasUsableAccessTokenWithoutRefresh() {
+                completion(accessToken)
+                return
+            }
         }
 
         refreshToken(force: forceRefresh) { success in
-            completion(success ? Config.readOAuthToken() : nil)
+            if success {
+                completion(Config.readOAuthToken())
+                return
+            }
+            if !forceRefresh,
+               let accessToken = Config.readOAuthToken(),
+               !self.accessTokenHasExpired() {
+                completion(accessToken)
+                return
+            }
+            completion(nil)
         }
     }
 
@@ -132,6 +142,10 @@ final class OAuthManager: NSObject {
            let accessToken = Config.readOAuthToken(),
            !accessTokenNeedsRefresh() {
             completion(!accessToken.isEmpty)
+            return
+        }
+        if !force, hasUsableAccessTokenWithoutRefresh() {
+            completion(true)
             return
         }
 
@@ -199,7 +213,7 @@ final class OAuthManager: NSObject {
 
     private func performRefresh() {
         guard let refresh = Config.readRefreshToken(), !refresh.isEmpty else {
-            completeRefresh(success: false, clearTokens: true)
+            completeRefresh(success: false, clearTokens: false)
             return
         }
 
@@ -296,6 +310,17 @@ final class OAuthManager: NSObject {
             return Config.readRefreshToken() != nil
         }
         return expiry.timeIntervalSinceNow <= tokenRefreshLeeway
+    }
+
+    private func accessTokenHasExpired() -> Bool {
+        guard let expiry = Config.readAccessTokenExpiry() else { return false }
+        return expiry.timeIntervalSinceNow <= 0
+    }
+
+    private func hasUsableAccessTokenWithoutRefresh() -> Bool {
+        guard Config.readRefreshToken() == nil else { return false }
+        guard let accessToken = Config.readOAuthToken(), !accessToken.isEmpty else { return false }
+        return !accessTokenHasExpired()
     }
 
     private static func showError(_ message: String) {

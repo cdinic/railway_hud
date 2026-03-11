@@ -9,7 +9,8 @@ class StatusBarController {
     private var settings:  SettingsWindowController?
 
     private var services: [ServiceStatus] = []
-    private var hasError  = false
+    private var lastUpdated: Date?
+    private var lastErrorMessage: String?
     private var pollTimer: Timer?
 
     private var savedOrder: [String] {
@@ -18,7 +19,7 @@ class StatusBarController {
     }
 
     private var isDisconnectedOrUnauthed: Bool {
-        Config.readOAuthToken() == nil || (Config.readProjectID()?.isEmpty != false)
+        !Config.hasOAuthSession() || (Config.readProjectID()?.isEmpty != false)
     }
 
     init() {
@@ -29,6 +30,7 @@ class StatusBarController {
         button.sendAction(on: [.leftMouseUp])
 
         panel.onConnect  = { [weak self] in self?.startOAuthFlow() }
+        panel.onRetry    = { [weak self] in self?.fetch() }
         panel.onSettings = { [weak self] in self?.openSettings() }
         panel.onQuit     = { NSApplication.shared.terminate(nil) }
         panel.onReorder  = { [weak self] reordered in
@@ -50,13 +52,14 @@ class StatusBarController {
                 switch result {
                 case .success(let svcs):
                     self?.services = self?.applyOrder(to: svcs) ?? svcs
-                    self?.hasError = false
+                    self?.lastUpdated = Date()
+                    self?.lastErrorMessage = nil
                 case .failure(let error):
-                    self?.services = []
-                    if let apiError = error as? APIError, case .noToken = apiError {
-                        self?.hasError = false
+                    if let apiError = error as? APIError, apiError.isSignInRequired {
+                        self?.services = []
+                        self?.lastErrorMessage = nil
                     } else {
-                        self?.hasError = true
+                        self?.lastErrorMessage = error.localizedDescription
                     }
                 }
                 self?.refresh()
@@ -79,11 +82,13 @@ class StatusBarController {
         statusItem.button?.image = LEDView.render(colors: currentColors())
 
         panel.services = services
+        panel.lastUpdated = lastUpdated
+        panel.statusMessage = lastErrorMessage
         if panel.isVisible { panel.reload() }
     }
 
     private func currentColors() -> [LEDColor] {
-        if hasError || isDisconnectedOrUnauthed {
+        if isDisconnectedOrUnauthed {
             return [.red]
         }
         return services.isEmpty ? [.gray] : services.map { LEDColor(status: $0.status) }

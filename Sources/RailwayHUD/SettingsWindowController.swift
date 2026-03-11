@@ -29,7 +29,7 @@ final class SettingsWindowController: NSObject {
     func show() {
         if window == nil { buildWindow() }
         updateUI()
-        if Config.readOAuthToken() != nil { fetchProjects() }
+        if Config.hasOAuthSession() { fetchProjects() }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -37,7 +37,7 @@ final class SettingsWindowController: NSObject {
     // MARK: - Actions
 
     @objc private func handleConnect() {
-        if Config.readOAuthToken() != nil {
+        if Config.hasOAuthSession() {
             Config.clearOAuthTokens()
             Config.clearProjectID()
             projects = []
@@ -48,7 +48,7 @@ final class SettingsWindowController: NSObject {
     }
 
     @objc private func fetchProjects() {
-        guard Config.readOAuthToken() != nil else { return }
+        guard Config.hasOAuthSession() else { return }
         projectDropdown?.setItems([])
         projectDropdown?.placeholder = "Loading..."
         selectionLabel?.stringValue = "loading..."
@@ -84,7 +84,7 @@ final class SettingsWindowController: NSObject {
                     self.selectionLabel?.stringValue = error.localizedDescription
                 }
 
-                if Config.readOAuthToken() == nil {
+                if !Config.hasOAuthSession() {
                     self.updateUI()
                 }
                 self.updateSelectionLabel()
@@ -94,7 +94,7 @@ final class SettingsWindowController: NSObject {
     }
 
     @objc private func save() {
-        guard Config.readOAuthToken() != nil else {
+        guard Config.hasOAuthSession() else {
             showError("Please sign in with Railway first.")
             return
         }
@@ -248,7 +248,7 @@ final class SettingsWindowController: NSObject {
     // MARK: - State
 
     private func updateUI() {
-        let isConnected = Config.readOAuthToken() != nil
+        let isConnected = Config.hasOAuthSession()
         sessionBadge?.setStatus(
             text: isConnected ? "SESSION ACTIVE" : "SIGN-IN REQUIRED",
             color: isConnected ? SettingsPalette.success : SettingsPalette.subtle
@@ -273,7 +273,7 @@ final class SettingsWindowController: NSObject {
     }
 
     private func updateSelectionLabel() {
-        guard Config.readOAuthToken() != nil else {
+        guard Config.hasOAuthSession() else {
             selectionLabel?.stringValue = "sign in required"
             return
         }
@@ -301,7 +301,7 @@ final class SettingsWindowController: NSObject {
 
     private func updateSaveButtonState() {
         let selectedProjectID = projectDropdown?.selectedID
-        saveButton?.isEnabled = Config.readOAuthToken() != nil && !(selectedProjectID?.isEmpty ?? true)
+        saveButton?.isEnabled = Config.hasOAuthSession() && !(selectedProjectID?.isEmpty ?? true)
     }
 
     private func showError(_ message: String) {

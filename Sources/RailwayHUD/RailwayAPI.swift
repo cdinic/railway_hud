@@ -39,7 +39,7 @@ enum APIError: LocalizedError {
 class RailwayAPI {
     private let apiURL = URL(string: "https://backboard.railway.com/graphql/v2")!
     private var hasSession: Bool {
-        Config.readOAuthToken() != nil || Config.readRefreshToken() != nil
+        Config.hasOAuthSession()
     }
 
     // MARK: - Fetch service statuses

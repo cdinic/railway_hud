@@ -19,6 +19,10 @@ enum Config {
         UserDefaults.standard.string(forKey: projectKey)
     }
 
+    static func hasOAuthSession() -> Bool {
+        readOAuthToken() != nil || readRefreshToken() != nil
+    }
+
     // MARK: - OAuth tokens (Keychain, cached in memory)
 
     static func readOAuthToken() -> String? {

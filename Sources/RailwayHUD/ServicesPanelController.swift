@@ -19,9 +19,11 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
 
     var services: [ServiceStatus] = []
     var lastUpdated: Date?
+    var statusMessage: String?
 
     var onReorder:  (([ServiceStatus]) -> Void)?
     var onConnect:  (() -> Void)?
+    var onRetry:    (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit:     (() -> Void)?
 
@@ -64,8 +66,8 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
 
     // MARK: - Sizing & placement
 
-    private var hasToken: Bool {
-        Config.readOAuthToken() != nil
+    private var hasSession: Bool {
+        Config.hasOAuthSession()
     }
 
     private var hasProjectSelection: Bool {
@@ -74,15 +76,19 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
     }
 
     private var showsConnectEmptyState: Bool {
-        !hasToken && services.isEmpty
+        !hasSession && services.isEmpty
     }
 
     private var showsProjectSelectionEmptyState: Bool {
-        hasToken && !hasProjectSelection && services.isEmpty
+        hasSession && !hasProjectSelection && services.isEmpty
+    }
+
+    private var showsFetchErrorEmptyState: Bool {
+        hasSession && hasProjectSelection && services.isEmpty && statusMessage != nil
     }
 
     private func bodyH() -> CGFloat {
-        (showsConnectEmptyState || showsProjectSelectionEmptyState)
+        (showsConnectEmptyState || showsProjectSelectionEmptyState || showsFetchErrorEmptyState)
             ? kEmptyStateH
             : max(1, CGFloat(services.count)) * kRowH
     }
@@ -223,20 +229,38 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
 
     private func updateLabel() {
         guard !showsConnectEmptyState else {
+            updatedLabel?.textColor = NSColor(white: 0.28, alpha: 1)
             updatedLabel?.stringValue = "not connected"
             return
         }
         guard !showsProjectSelectionEmptyState else {
+            updatedLabel?.textColor = NSColor(white: 0.28, alpha: 1)
             updatedLabel?.stringValue = "project not selected"
             return
         }
+        if let statusMessage {
+            updatedLabel?.textColor = NSColor(red: 0.88, green: 0.60, blue: 0.14, alpha: 1)
+            if let date = lastUpdated {
+                let f = DateFormatter()
+                f.timeStyle = .medium
+                updatedLabel?.stringValue = "stale \(f.string(from: date)) — \(compact(statusMessage))"
+            } else {
+                updatedLabel?.stringValue = compact(statusMessage)
+            }
+            return
+        }
+        updatedLabel?.textColor = NSColor(white: 0.28, alpha: 1)
         guard let date = lastUpdated else { updatedLabel?.stringValue = ""; return }
         let f = DateFormatter(); f.timeStyle = .medium
         updatedLabel?.stringValue = "updated \(f.string(from: date))"
     }
 
     private func updateEmptyState() {
-        if showsProjectSelectionEmptyState {
+        if showsFetchErrorEmptyState {
+            emptyStateTitle?.stringValue = "Railway status unavailable"
+            emptyStateDetail?.stringValue = statusMessage ?? "The latest status request failed."
+            emptyStateButton?.title = "Retry Now"
+        } else if showsProjectSelectionEmptyState {
             emptyStateTitle?.stringValue = "No Railway project selected"
             emptyStateDetail?.stringValue = "Open settings to choose a project for live service status."
             emptyStateButton?.title = "Open Settings"
@@ -254,7 +278,7 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
     func reload() {
         updateLabel()
         updateEmptyState()
-        let showEmpty = showsConnectEmptyState || showsProjectSelectionEmptyState
+        let showEmpty = showsConnectEmptyState || showsProjectSelectionEmptyState || showsFetchErrorEmptyState
         emptyStateView?.isHidden = !showEmpty
         tableView?.isHidden = showEmpty
         tableView?.reloadData()
@@ -341,6 +365,8 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         hide()
         if showsConnectEmptyState {
             onConnect?()
+        } else if showsFetchErrorEmptyState {
+            onRetry?()
         } else {
             onSettings?()
         }
@@ -348,6 +374,12 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
 
     @objc private func doSettings() { hide(); onSettings?() }
     @objc private func doQuit()     { onQuit?() }
+
+    private func compact(_ message: String) -> String {
+        let collapsed = message.replacingOccurrences(of: "\n", with: " ")
+        guard collapsed.count > 58 else { return collapsed }
+        return String(collapsed.prefix(55)) + "..."
+    }
 }
 
 // MARK: - Helper views
