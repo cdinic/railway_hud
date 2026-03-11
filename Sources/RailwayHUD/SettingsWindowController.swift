@@ -74,11 +74,19 @@ final class SettingsWindowController: NSObject {
                 case .failure(let error):
                     self.projects = []
                     self.projectDropdown?.setItems([])
-                    self.projectDropdown?.placeholder = "Unavailable"
+                    if let apiError = error as? APIError,
+                       apiError.isSignInRequired {
+                        self.projectDropdown?.placeholder = "Sign in to browse"
+                    } else {
+                        self.projectDropdown?.placeholder = "Unavailable"
+                    }
                     self.projectDropdown?.selectedID = nil
                     self.selectionLabel?.stringValue = error.localizedDescription
                 }
 
+                if Config.readOAuthToken() == nil {
+                    self.updateUI()
+                }
                 self.updateSelectionLabel()
                 self.updateSaveButtonState()
             }
@@ -246,7 +254,7 @@ final class SettingsWindowController: NSObject {
             color: isConnected ? SettingsPalette.success : SettingsPalette.subtle
         )
 
-        connectButton?.title = isConnected ? "RECONNECT" : "CONNECT"
+        connectButton?.title = isConnected ? "REAUTH" : "CONNECT"
         connectButton?.style = .secondary
 
         projectSection?.alphaValue = isConnected ? 1 : 0.42

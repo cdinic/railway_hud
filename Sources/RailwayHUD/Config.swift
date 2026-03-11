@@ -5,6 +5,9 @@ import Security
 enum Config {
     static let orderKey  = "com.railway-hud.serviceOrder"
     static let projectKey = "com.railway-hud.projectID"
+    private static let accessTokenExpiryKey = "com.railway-hud.oauthAccessTokenExpiry"
+    private static let oauthStateKey = "com.railway-hud.oauthState"
+    private static let oauthCodeVerifierKey = "com.railway-hud.oauthCodeVerifier"
 
     private static let keychainService = "com.railway-hud"
 
@@ -28,11 +31,22 @@ enum Config {
         return _cachedRefreshToken
     }
 
-    static func saveOAuthTokens(access: String, refresh: String?) {
+    static func readAccessTokenExpiry() -> Date? {
+        let seconds = UserDefaults.standard.double(forKey: accessTokenExpiryKey)
+        guard seconds > 0 else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    static func saveOAuthTokens(access: String, refresh: String?, expiresIn: TimeInterval?) {
         _cachedAccessToken  = access
         _cachedRefreshToken = refresh
         keychainWrite("oauth_access_token", value: access)
         if let r = refresh { keychainWrite("oauth_refresh_token", value: r) }
+        if let expiresIn {
+            UserDefaults.standard.set(Date().addingTimeInterval(expiresIn).timeIntervalSince1970, forKey: accessTokenExpiryKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
+        }
     }
 
     static func clearOAuthTokens() {
@@ -40,6 +54,25 @@ enum Config {
         _cachedRefreshToken = nil
         keychainDelete("oauth_access_token")
         keychainDelete("oauth_refresh_token")
+        UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
+    }
+
+    static func savePendingOAuth(state: String, codeVerifier: String) {
+        UserDefaults.standard.set(state, forKey: oauthStateKey)
+        UserDefaults.standard.set(codeVerifier, forKey: oauthCodeVerifierKey)
+    }
+
+    static func readPendingOAuthState() -> String? {
+        UserDefaults.standard.string(forKey: oauthStateKey)
+    }
+
+    static func readPendingCodeVerifier() -> String? {
+        UserDefaults.standard.string(forKey: oauthCodeVerifierKey)
+    }
+
+    static func clearPendingOAuth() {
+        UserDefaults.standard.removeObject(forKey: oauthStateKey)
+        UserDefaults.standard.removeObject(forKey: oauthCodeVerifierKey)
     }
 
     // MARK: - Project selection
