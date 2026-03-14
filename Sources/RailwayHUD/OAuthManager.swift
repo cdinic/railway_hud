@@ -34,6 +34,7 @@ final class OAuthManager: NSObject {
     // MARK: - Public API
 
     func startFlow() {
+        Diagnostics.shared.log("oauth", "oauth flow started")
         guard !Self.clientID.isEmpty else {
             DispatchQueue.main.async {
                 let alert = NSAlert()
@@ -67,6 +68,7 @@ final class OAuthManager: NSObject {
                 URLQueryItem(name: "response_type",         value: "code"),
                 URLQueryItem(name: "redirect_uri",          value: self.redirectURI),
                 URLQueryItem(name: "scope",                 value: "openid offline_access workspace:viewer project:viewer"),
+                URLQueryItem(name: "prompt",                value: "consent"),
                 URLQueryItem(name: "state",                 value: self.authState),
                 URLQueryItem(name: "code_challenge",        value: challenge),
                 URLQueryItem(name: "code_challenge_method", value: "S256"),
@@ -89,6 +91,10 @@ final class OAuthManager: NSObject {
         if let oauthError = components.queryItems?.first(where: { $0.name == "error" })?.value {
             let description = components.queryItems?.first(where: { $0.name == "error_description" })?.value ?? ""
             Config.clearPendingOAuth()
+            Diagnostics.shared.log("oauth", "callback returned error", metadata: [
+                "error": oauthError,
+                "description": description
+            ])
             Self.showError("Railway error: \(oauthError)\(description.isEmpty ? "" : " — \(description)")")
             return
         }
@@ -97,12 +103,14 @@ final class OAuthManager: NSObject {
            !expectedState.isEmpty,
            returnedState != expectedState {
             Config.clearPendingOAuth()
+            Diagnostics.shared.log("oauth", "callback state mismatch")
             Self.showError("Invalid OAuth state. Please try connecting again.")
             return
         }
 
         guard !storedCodeVerifier.isEmpty else {
             Config.clearPendingOAuth()
+            Diagnostics.shared.log("oauth", "missing PKCE verifier")
             Self.showError("Missing PKCE verifier. Please try connecting again.")
             return
         }
@@ -132,6 +140,12 @@ final class OAuthManager: NSObject {
                !self.accessTokenHasExpired() {
                 completion(accessToken)
                 return
+            }
+            if self.accessTokenHasExpired() {
+                Diagnostics.shared.log("oauth", "clearing expired session", metadata: [
+                    "reason": Config.readRefreshToken() == nil ? "missing_refresh_token" : "refresh_failed"
+                ])
+                Config.clearOAuthTokens()
             }
             completion(nil)
         }
@@ -183,9 +197,13 @@ final class OAuthManager: NSObject {
                         refresh: payload.refreshToken,
                         expiresIn: payload.expiresIn ?? self.fallbackAccessTokenLifetime
                     )
+                    Diagnostics.shared.log("oauth", "token exchange succeeded", metadata: [
+                        "refreshToken": payload.refreshToken == nil ? "missing" : "present"
+                    ])
                     DispatchQueue.main.async { self.onSuccess?() }
                 case .failure(let message):
                     Config.clearPendingOAuth()
+                    Diagnostics.shared.log("oauth", "token exchange failed", metadata: ["error": message.localizedDescription])
                     OAuthManager.showError(message.localizedDescription)
                 }
             }
@@ -213,6 +231,7 @@ final class OAuthManager: NSObject {
 
     private func performRefresh() {
         guard let refresh = Config.readRefreshToken(), !refresh.isEmpty else {
+            Diagnostics.shared.log("oauth", "refresh skipped", metadata: ["reason": "missing_refresh_token"])
             completeRefresh(success: false, clearTokens: false)
             return
         }
@@ -240,10 +259,17 @@ final class OAuthManager: NSObject {
                         refresh: payload.refreshToken ?? refresh,
                         expiresIn: payload.expiresIn ?? self.fallbackAccessTokenLifetime
                     )
+                    Diagnostics.shared.log("oauth", "refresh succeeded", metadata: [
+                        "refreshToken": payload.refreshToken == nil ? "reused" : "rotated"
+                    ])
                     self.completeRefresh(success: true, clearTokens: false)
                 case .failure(let message):
                     let description = message.localizedDescription
                     let shouldClear = description.contains("invalid_grant") || description.contains("invalid_token")
+                    Diagnostics.shared.log("oauth", "refresh failed", metadata: [
+                        "error": description,
+                        "clearTokens": shouldClear ? "true" : "false"
+                    ])
                     self.completeRefresh(success: false, clearTokens: shouldClear)
                 }
             }

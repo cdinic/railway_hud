@@ -5,6 +5,8 @@ import Security
 enum Config {
     static let orderKey  = "com.railway-hud.serviceOrder"
     static let projectKey = "com.railway-hud.projectID"
+    static let sessionDidChangeNotification = Notification.Name("com.railway-hud.sessionDidChange")
+    static let projectDidChangeNotification = Notification.Name("com.railway-hud.projectDidChange")
     private static let accessTokenExpiryKey = "com.railway-hud.oauthAccessTokenExpiry"
     private static let oauthStateKey = "com.railway-hud.oauthState"
     private static let oauthCodeVerifierKey = "com.railway-hud.oauthCodeVerifier"
@@ -20,7 +22,20 @@ enum Config {
     }
 
     static func hasOAuthSession() -> Bool {
-        readOAuthToken() != nil || readRefreshToken() != nil
+        if let refreshToken = readRefreshToken(), !refreshToken.isEmpty {
+            return true
+        }
+        guard let accessToken = readOAuthToken(), !accessToken.isEmpty else {
+            return false
+        }
+        guard let expiry = readAccessTokenExpiry() else {
+            return true
+        }
+        guard expiry.timeIntervalSinceNow > 0 else {
+            clearExpiredAccessTokenOnlySession()
+            return false
+        }
+        return true
     }
 
     // MARK: - OAuth tokens (Keychain, cached in memory)
@@ -51,6 +66,7 @@ enum Config {
         } else {
             UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
         }
+        NotificationCenter.default.post(name: sessionDidChangeNotification, object: nil)
     }
 
     static func clearOAuthTokens() {
@@ -59,6 +75,14 @@ enum Config {
         keychainDelete("oauth_access_token")
         keychainDelete("oauth_refresh_token")
         UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
+        NotificationCenter.default.post(name: sessionDidChangeNotification, object: nil)
+    }
+
+    private static func clearExpiredAccessTokenOnlySession() {
+        _cachedAccessToken = nil
+        keychainDelete("oauth_access_token")
+        UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
+        NotificationCenter.default.post(name: sessionDidChangeNotification, object: nil)
     }
 
     static func savePendingOAuth(state: String, codeVerifier: String) {
@@ -83,10 +107,12 @@ enum Config {
 
     static func saveProjectID(_ id: String) {
         UserDefaults.standard.set(id, forKey: projectKey)
+        NotificationCenter.default.post(name: projectDidChangeNotification, object: nil)
     }
 
     static func clearProjectID() {
         UserDefaults.standard.removeObject(forKey: projectKey)
+        NotificationCenter.default.post(name: projectDidChangeNotification, object: nil)
     }
 
     // MARK: - Keychain

@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
+VERSION="1.2"
 APP="RailwayHUD.app"
+ZIP="RailwayHUD-v${VERSION}.zip"
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 
@@ -14,7 +16,7 @@ mkdir -p "$MACOS"
 
 cp .build/release/RailwayHUD "$MACOS/RailwayHUD"
 
-cat > "$CONTENTS/Info.plist" << 'EOF'
+cat > "$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -26,9 +28,9 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Railway HUD</string>
     <key>CFBundleVersion</key>
-    <string>1.1</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1</string>
+    <string>${VERSION}</string>
     <key>CFBundleExecutable</key>
     <string>RailwayHUD</string>
     <key>CFBundlePackageType</key>
@@ -54,9 +56,14 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
 </plist>
 EOF
 
+echo "→ Archiving $ZIP..."
+rm -f "$ZIP"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+
 echo ""
 echo "✓ Done: $APP"
 echo ""
+echo "Release zip:   $ZIP"
 echo "Run it:        open $APP"
 echo "Install:       cp -r $APP /Applications/"
 echo "Auto-start:    System Settings → General → Login Items → add RailwayHUD.app"

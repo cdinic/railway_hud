@@ -22,9 +22,30 @@ final class SettingsWindowController: NSObject {
     private var projectSection: NSView?
     private var projectDropdown: SettingsDropdownButton?
     private var fetchButton: SettingsActionButton?
+    private var copyLogButton: SettingsActionButton?
     private var saveButton: SettingsActionButton?
     private var selectionLabel: NSTextField?
     private var projects: [ProjectInfo] = []
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSessionChanged),
+            name: Config.sessionDidChangeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleProjectChanged),
+            name: Config.projectDidChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     func show() {
         if window == nil { buildWindow() }
@@ -37,14 +58,23 @@ final class SettingsWindowController: NSObject {
     // MARK: - Actions
 
     @objc private func handleConnect() {
-        if Config.hasOAuthSession() {
-            Config.clearOAuthTokens()
-            Config.clearProjectID()
-            projects = []
-            onConfigurationChange?()
-        }
         updateUI()
         onConnectRequested?()
+    }
+
+    @objc private func handleSessionChanged() {
+        DispatchQueue.main.async {
+            self.updateUI()
+            if Config.hasOAuthSession() {
+                self.fetchProjects()
+            }
+        }
+    }
+
+    @objc private func handleProjectChanged() {
+        DispatchQueue.main.async {
+            self.updateUI()
+        }
     }
 
     @objc private func fetchProjects() {
@@ -114,6 +144,24 @@ final class SettingsWindowController: NSObject {
         window?.close()
     }
 
+    @objc private func copyDiagnostics() {
+        let text = Diagnostics.shared.exportText()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        Diagnostics.shared.log("ui", "diagnostics copied", metadata: [
+            "lines": "\(text.split(separator: "\n").count)"
+        ])
+
+        let alert = NSAlert()
+        alert.messageText = "Diagnostics copied"
+        alert.informativeText = "The recent Railway HUD event log is now on the clipboard."
+        if let window {
+            alert.beginSheetModal(for: window, completionHandler: nil)
+        } else {
+            alert.runModal()
+        }
+    }
+
     @objc private func projectSelectionChanged() {
         updateSelectionLabel()
         updateSaveButtonState()
@@ -154,6 +202,19 @@ final class SettingsWindowController: NSObject {
             size: 10
         )
         content.addSubview(eyebrow)
+
+        let copyButton = SettingsActionButton(
+            frame: NSRect(x: panelSize.width - pad - 88, y: panelSize.height - 42, width: 88, height: 20),
+            style: .secondary
+        )
+        copyButton.title = "COPY LOG"
+        copyButton.alignment = .right
+        copyButton.titleColorOverride = SettingsPalette.muted
+        copyButton.target = self
+        copyButton.action = #selector(copyDiagnostics)
+        content.addSubview(copyButton)
+        self.copyLogButton = copyButton
+
         content.addSubview(makeRule(frame: NSRect(x: pad, y: panelSize.height - 48, width: width, height: 1)))
 
         let sessionSection = NSView(frame: NSRect(x: pad, y: 122, width: width, height: 38))
@@ -175,6 +236,7 @@ final class SettingsWindowController: NSObject {
             frame: NSRect(x: width - 92, y: -1, width: 92, height: 20),
             style: .secondary
         )
+        connectButton.alignment = .right
         connectButton.target = self
         connectButton.action = #selector(handleConnect)
         sessionSection.addSubview(connectButton)
@@ -206,6 +268,7 @@ final class SettingsWindowController: NSObject {
             style: .secondary
         )
         fetchButton.title = "REFRESH"
+        fetchButton.alignment = .right
         fetchButton.target = self
         fetchButton.action = #selector(fetchProjects)
         projectSection.addSubview(fetchButton)
@@ -213,7 +276,7 @@ final class SettingsWindowController: NSObject {
 
         let selectionLabel = makeLabel(
             "select a project",
-            frame: NSRect(x: pad, y: 24, width: width - 100, height: 12),
+            frame: NSRect(x: pad, y: 42, width: width - 100, height: 12),
             color: SettingsPalette.subtle,
             weight: .regular,
             size: 10
@@ -222,7 +285,7 @@ final class SettingsWindowController: NSObject {
         self.selectionLabel = selectionLabel
 
         let cancelButton = SettingsActionButton(
-            frame: NSRect(x: panelSize.width - pad - 92, y: 26, width: 48, height: 20),
+            frame: NSRect(x: panelSize.width - pad - 92, y: 10, width: 48, height: 20),
             style: .secondary
         )
         cancelButton.title = "CANCEL"
@@ -232,7 +295,7 @@ final class SettingsWindowController: NSObject {
         content.addSubview(cancelButton)
 
         let saveButton = SettingsActionButton(
-            frame: NSRect(x: panelSize.width - pad - 36, y: 26, width: 36, height: 20),
+            frame: NSRect(x: panelSize.width - pad - 36, y: 10, width: 36, height: 20),
             style: .primary
         )
         saveButton.title = "SAVE"
@@ -399,6 +462,10 @@ private final class SettingsActionButton: NSButton {
         didSet { refreshAppearance() }
     }
 
+    var titleColorOverride: NSColor? {
+        didSet { refreshAppearance() }
+    }
+
     override var title: String {
         didSet { refreshAppearance() }
     }
@@ -433,12 +500,17 @@ private final class SettingsActionButton: NSButton {
         case (.secondary, false):
             color = SettingsPalette.subtle
         }
+        let resolvedColor = titleColorOverride ?? color
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = alignment
 
         attributedTitle = NSAttributedString(
             string: title,
             attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-                .foregroundColor: color
+                .foregroundColor: resolvedColor,
+                .paragraphStyle: paragraphStyle
             ]
         )
     }

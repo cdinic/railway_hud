@@ -195,21 +195,33 @@ class RailwayAPI {
         OAuthManager.shared.withValidAccessToken(forceRefresh: retryingAuth) { [weak self] token in
             guard let self else { return }
             guard let token else {
+                Diagnostics.shared.log("api", "missing access token", metadata: ["retryingAuth": retryingAuth ? "true" : "false"])
                 completion(nil, 0, APIError.unauthorized)
                 return
             }
 
             self.performRequest(query: query, token: token) { data, statusCode, error in
                 if self.isUnauthorizedResponse(data: data, statusCode: statusCode), !retryingAuth {
+                    Diagnostics.shared.log("api", "unauthorized response, forcing refresh", metadata: ["statusCode": "\(statusCode)"])
                     OAuthManager.shared.refreshToken(force: true) { refreshed in
                         guard refreshed else {
                             Config.clearOAuthTokens()
+                            Diagnostics.shared.log("api", "forced refresh failed, clearing tokens", metadata: ["statusCode": "\(statusCode)"])
                             completion(nil, statusCode, APIError.unauthorized)
                             return
                         }
+                        Diagnostics.shared.log("api", "forced refresh succeeded", metadata: ["statusCode": "\(statusCode)"])
                         self.performAuthorizedRequest(query: query, retryingAuth: true, completion: completion)
                     }
                     return
+                }
+                if let error {
+                    Diagnostics.shared.log("api", "request failed", metadata: [
+                        "statusCode": "\(statusCode)",
+                        "error": error.localizedDescription
+                    ])
+                } else {
+                    Diagnostics.shared.log("api", "request completed", metadata: ["statusCode": "\(statusCode)"])
                 }
                 completion(data, statusCode, error)
             }
