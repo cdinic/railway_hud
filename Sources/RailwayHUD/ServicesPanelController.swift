@@ -9,6 +9,7 @@ private let kFooterH: CGFloat = 52  // footer: one button row + updated label
 private let kPadL:   CGFloat = 12   // left padding
 private let kPadR:   CGFloat = 12   // right padding
 private let kLedSz:  CGFloat = 6    // LED square size
+private let kAgoW:   CGFloat = 22   // tiny deployment age width
 private let kStatW:  CGFloat = 72   // status label column width
 private let kNameX:  CGFloat = 24   // name column start (after LED)
 private let kEmptyStateH: CGFloat = 126
@@ -296,6 +297,15 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         cell.addSubview(led)
 
         let statX  = colW - kPadR - kStatW
+        let agoX   = statX - kAgoW
+
+        let ago = NSTextField(labelWithString: deploymentAgeText(for: svc.deployedAt))
+        ago.font      = .monospacedSystemFont(ofSize: 8, weight: .regular)
+        ago.textColor = NSColor(white: 0.34, alpha: 1)
+        ago.alignment = .right
+        ago.frame     = NSRect(x: agoX, y: (kRowH - 11) / 2, width: kAgoW, height: 11)
+        cell.addSubview(ago)
+
         let status = NSTextField(labelWithString: color.label)
         status.font      = .monospacedSystemFont(ofSize: 9, weight: .regular)
         status.textColor = color == .gray ? NSColor(white: 0.28, alpha: 1) : color.nsColor.withAlphaComponent(0.60)
@@ -307,7 +317,7 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         name.font          = .monospacedSystemFont(ofSize: 11, weight: .regular)
         name.textColor     = NSColor(white: 0.76, alpha: 1)
         name.lineBreakMode = .byTruncatingTail
-        name.frame         = NSRect(x: kNameX, y: (kRowH - 15) / 2, width: statX - kNameX - 6, height: 15)
+        name.frame         = NSRect(x: kNameX, y: (kRowH - 15) / 2, width: agoX - kNameX - 6, height: 15)
         cell.addSubview(name)
 
         return cell
@@ -356,7 +366,9 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         guard row >= 0, row < services.count else { return }
         let svc = services[row]
         let pid = Config.readProjectID() ?? ""
-        guard let url = URL(string: "https://railway.app/project/\(pid)/service/\(svc.id)") else { return }
+        let target = svc.serviceID.map { "https://railway.app/project/\(pid)/service/\($0)" }
+            ?? "https://railway.app/project/\(pid)"
+        guard let url = URL(string: target) else { return }
         hide()
         NSWorkspace.shared.open(url)
     }
@@ -379,6 +391,24 @@ class ServicesPanelController: NSObject, NSTableViewDataSource, NSTableViewDeleg
         let collapsed = message.replacingOccurrences(of: "\n", with: " ")
         guard collapsed.count > 58 else { return collapsed }
         return String(collapsed.prefix(55)) + "..."
+    }
+
+    private func deploymentAgeText(for date: Date?) -> String {
+        guard let date else { return "" }
+
+        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        switch seconds {
+        case ..<60:
+            return "\(seconds)S"
+        case ..<3_600:
+            return "\(seconds / 60)M"
+        case ..<86_400:
+            return "\(seconds / 3_600)H"
+        case ..<31_536_000:
+            return "\(seconds / 86_400)D"
+        default:
+            return "\(seconds / 31_536_000)Y"
+        }
     }
 }
 

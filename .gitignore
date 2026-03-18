@@ -1,4 +1,6 @@
 .build/
+.swift-cache/
+.swift-home/
 .DS_Store
 *.app
 RailwayHUD-v*.zip

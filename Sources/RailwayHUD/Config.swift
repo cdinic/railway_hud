@@ -12,10 +12,18 @@ enum Config {
     private static let oauthCodeVerifierKey = "com.railway-hud.oauthCodeVerifier"
 
     private static let keychainService = "com.railway-hud"
+    private static let oauthBundleKey = "oauth_tokens"
+    private static let legacyAccessTokenKey = "oauth_access_token"
+    private static let legacyRefreshTokenKey = "oauth_refresh_token"
 
     // In-memory cache — avoids repeated keychain prompts within a single session.
-    private static var _cachedAccessToken:  String? = nil
-    private static var _cachedRefreshToken: String? = nil
+    private static var _cachedTokens: OAuthTokenBundle? = nil
+    private static var _hasLoadedTokens = false
+
+    private struct OAuthTokenBundle: Codable {
+        let accessToken: String?
+        let refreshToken: String?
+    }
 
     static func readProjectID() -> String? {
         UserDefaults.standard.string(forKey: projectKey)
@@ -41,13 +49,13 @@ enum Config {
     // MARK: - OAuth tokens (Keychain, cached in memory)
 
     static func readOAuthToken() -> String? {
-        if _cachedAccessToken == nil { _cachedAccessToken = keychainRead("oauth_access_token") }
-        return _cachedAccessToken
+        loadOAuthTokensIfNeeded()
+        return _cachedTokens?.accessToken
     }
 
     static func readRefreshToken() -> String? {
-        if _cachedRefreshToken == nil { _cachedRefreshToken = keychainRead("oauth_refresh_token") }
-        return _cachedRefreshToken
+        loadOAuthTokensIfNeeded()
+        return _cachedTokens?.refreshToken
     }
 
     static func readAccessTokenExpiry() -> Date? {
@@ -57,10 +65,12 @@ enum Config {
     }
 
     static func saveOAuthTokens(access: String, refresh: String?, expiresIn: TimeInterval?) {
-        _cachedAccessToken  = access
-        _cachedRefreshToken = refresh
-        keychainWrite("oauth_access_token", value: access)
-        if let r = refresh { keychainWrite("oauth_refresh_token", value: r) }
+        let bundle = OAuthTokenBundle(accessToken: access, refreshToken: refresh)
+        _cachedTokens = bundle
+        _hasLoadedTokens = true
+        keychainWriteData(oauthBundleKey, value: encode(bundle))
+        keychainDelete(legacyAccessTokenKey)
+        keychainDelete(legacyRefreshTokenKey)
         if let expiresIn {
             UserDefaults.standard.set(Date().addingTimeInterval(expiresIn).timeIntervalSince1970, forKey: accessTokenExpiryKey)
         } else {
@@ -70,17 +80,19 @@ enum Config {
     }
 
     static func clearOAuthTokens() {
-        _cachedAccessToken  = nil
-        _cachedRefreshToken = nil
-        keychainDelete("oauth_access_token")
-        keychainDelete("oauth_refresh_token")
+        _cachedTokens = nil
+        _hasLoadedTokens = true
+        keychainDelete(oauthBundleKey)
+        keychainDelete(legacyAccessTokenKey)
+        keychainDelete(legacyRefreshTokenKey)
         UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
         NotificationCenter.default.post(name: sessionDidChangeNotification, object: nil)
     }
 
     private static func clearExpiredAccessTokenOnlySession() {
-        _cachedAccessToken = nil
-        keychainDelete("oauth_access_token")
+        loadOAuthTokensIfNeeded()
+        _cachedTokens = OAuthTokenBundle(accessToken: nil, refreshToken: _cachedTokens?.refreshToken)
+        persistCachedOAuthTokens()
         UserDefaults.standard.removeObject(forKey: accessTokenExpiryKey)
         NotificationCenter.default.post(name: sessionDidChangeNotification, object: nil)
     }
@@ -117,7 +129,53 @@ enum Config {
 
     // MARK: - Keychain
 
-    private static func keychainRead(_ key: String) -> String? {
+    private static func loadOAuthTokensIfNeeded() {
+        guard !_hasLoadedTokens else { return }
+        _hasLoadedTokens = true
+
+        if let data = keychainReadData(oauthBundleKey),
+           let bundle = decode(data) {
+            _cachedTokens = bundle
+            return
+        }
+
+        let legacyAccessToken = keychainReadString(legacyAccessTokenKey)
+        let legacyRefreshToken = keychainReadString(legacyRefreshTokenKey)
+        guard legacyAccessToken != nil || legacyRefreshToken != nil else {
+            _cachedTokens = nil
+            return
+        }
+
+        let migratedBundle = OAuthTokenBundle(accessToken: legacyAccessToken, refreshToken: legacyRefreshToken)
+        _cachedTokens = migratedBundle
+        persistCachedOAuthTokens()
+        keychainDelete(legacyAccessTokenKey)
+        keychainDelete(legacyRefreshTokenKey)
+    }
+
+    private static func persistCachedOAuthTokens() {
+        if let bundle = _cachedTokens,
+           bundle.accessToken != nil || bundle.refreshToken != nil {
+            keychainWriteData(oauthBundleKey, value: encode(bundle))
+        } else {
+            keychainDelete(oauthBundleKey)
+        }
+    }
+
+    private static func encode(_ bundle: OAuthTokenBundle) -> Data {
+        (try? JSONEncoder().encode(bundle)) ?? Data()
+    }
+
+    private static func decode(_ data: Data) -> OAuthTokenBundle? {
+        try? JSONDecoder().decode(OAuthTokenBundle.self, from: data)
+    }
+
+    private static func keychainReadString(_ key: String) -> String? {
+        guard let data = keychainReadData(key) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func keychainReadData(_ key: String) -> Data? {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: keychainService,
@@ -128,21 +186,20 @@ enum Config {
         var out: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
               let data = out as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        return data
     }
 
-    private static func keychainWrite(_ key: String, value: String) {
-        let data  = Data(value.utf8)
+    private static func keychainWriteData(_ key: String, value: Data) {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: keychainService,
             kSecAttrAccount: key,
         ]
         if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
-            SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            SecItemUpdate(query as CFDictionary, [kSecValueData as String: value] as CFDictionary)
         } else {
             var add = query
-            add[kSecValueData] = data
+            add[kSecValueData] = value
             SecItemAdd(add as CFDictionary, nil)
         }
     }

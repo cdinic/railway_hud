@@ -80,11 +80,26 @@ class StatusBarController {
 
     private func applyOrder(to svcs: [ServiceStatus]) -> [ServiceStatus] {
         let order = savedOrder
-        guard !order.isEmpty else { return svcs }
+        guard !order.isEmpty else { return alphabeticalServices(svcs) }
+        let currentIDs = Set(svcs.map(\.id))
+        let savedIDs = Set(order)
+        guard currentIDs == savedIDs, order.count == svcs.count else {
+            return alphabeticalServices(svcs)
+        }
         var dict   = Dictionary(uniqueKeysWithValues: svcs.map { ($0.id, $0) })
         var result = order.compactMap { dict.removeValue(forKey: $0) }
-        result    += dict.values
+        result    += alphabeticalServices(Array(dict.values))
         return result
+    }
+
+    private func alphabeticalServices(_ svcs: [ServiceStatus]) -> [ServiceStatus] {
+        svcs.sorted {
+            let comparison = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if comparison != .orderedSame {
+                return comparison == .orderedAscending
+            }
+            return $0.id < $1.id
+        }
     }
 
     // MARK: - Refresh

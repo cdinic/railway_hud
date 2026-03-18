@@ -2,6 +2,15 @@
 
 Native macOS menu bar app for Railway service status.
 
+## Important for local testing
+
+After every code change, rebuild and repackage the app before launching it for testing. Running an older `RailwayHUD.app` bundle will not pick up your latest source edits.
+
+```bash
+./build.sh
+open RailwayHUD.app
+```
+
 <img src="railway_hud.png" width="86" alt="Railway HUD menu bar LEDs" />
 
 ## What it does

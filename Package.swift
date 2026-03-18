@@ -8,6 +8,11 @@ let package = Package(
         .executableTarget(
             name: "RailwayHUD",
             path: "Sources/RailwayHUD"
+        ),
+        .testTarget(
+            name: "RailwayHUDTests",
+            dependencies: ["RailwayHUD"],
+            path: "Tests/RailwayHUDTests"
         )
     ]
 )
